@@ -626,7 +626,6 @@ const ClientManagementScreen: React.FC<Props> = ({ user }) => {
                 isAdmin={isAdmin}
                 rutasAsignadas={rutasAsignadas}
                 handleFileUpload={handleFileUpload}
-                cargarDesdeBD={cargarClientesDesdeBD}
                 handleApiSync={handleApiSync}
                 handleSaveToDatabase={handleSaveToDatabase}
                 selectedRoute={selectedRoute}
