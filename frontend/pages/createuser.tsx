@@ -23,15 +23,14 @@ const CreateUser: React.FC = () => {
     });
     const [role, setRole] = useState('VENDEDOR');
     const [assignedRoutes, setAssignedRoutes] = useState<string[]>([]);
-    const [usersList, setUsersList] = useState<User[]>([]);
+    const [allUsers, setAllUsers] = useState<User[]>([]);
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [currentPage, setCurrentPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [totalUsers, setTotalUsers] = useState(0);
     const itemsPerPage = 10;
 
-    const cargarUsuariosDesdeBD = (page = 1) => {
-        getUsers(page, itemsPerPage).then((data: any) => {
+    const cargarUsuariosDesdeBD = () => {
+        // Cargar TODOS los usuarios sin paginación
+        getUsers(1, 999999).then((data: any) => {
             if (data && data.usuarios && Array.isArray(data.usuarios)) {
                 const mappedUsers: User[] = data.usuarios.map((u: any) => ({
                     id: u.id,
@@ -39,24 +38,55 @@ const CreateUser: React.FC = () => {
                     role: u.rol,
                     assigned_routes: u.rutasAsignadas
                 }));
-                setUsersList(mappedUsers);
-
-                // Actualizar información de paginación
-                setTotalUsers(data.total || mappedUsers.length);
-                setTotalPages(data.totalPages || Math.ceil((data.total || mappedUsers.length) / itemsPerPage));
-                setCurrentPage(page);
+                setAllUsers(mappedUsers);
             }
         }).catch(err => console.error(err));
     }
 
     useEffect(() => {
-        cargarUsuariosDesdeBD(1);
+        cargarUsuariosDesdeBD();
     }, []);
+
+    // Filtrar usuarios según el término de búsqueda
+    const filteredUsers = React.useMemo(() => {
+        if (!searchTerm.trim()) {
+            return allUsers;
+        }
+
+        const term = searchTerm.toLowerCase();
+        return allUsers.filter(user => {
+            const username = user.username?.toLowerCase() || '';
+            const role = user.role?.toLowerCase() || '';
+            const routes = Array.isArray(user.assigned_routes)
+                ? user.assigned_routes.join(' ').toLowerCase()
+                : (user.assigned_routes?.toLowerCase() || '');
+
+            return username.includes(term) ||
+                role.includes(term) ||
+                routes.includes(term);
+        });
+    }, [allUsers, searchTerm]);
+
+    // Calcular paginación sobre usuarios filtrados
+    const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+    const totalUsers = filteredUsers.length;
+
+    // Usuarios paginados
+    const paginatedUsers = React.useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        return filteredUsers.slice(startIndex, endIndex);
+    }, [filteredUsers, currentPage, itemsPerPage]);
+
+    // Resetear a página 1 cuando cambia el término de búsqueda
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
 
     const handleEditUser = (user: User) => {
         setUsername(user.username);
         setRole(user.role);
-        setAssignedRoutes(user.assigned_routes);
+        setAssignedRoutes(Array.isArray(user.assigned_routes) ? user.assigned_routes : []);
     };
 
     const handleSaveToDatabase = async () => {
@@ -70,7 +100,7 @@ const CreateUser: React.FC = () => {
         try {
             await putUser(payload);
             // Recargar lista
-            cargarUsuariosDesdeBD(currentPage);
+            cargarUsuariosDesdeBD();
             setToast({ show: true, message: "Usuario guardado exitosamente", type: 'success' });
 
             // Limpiar formulario
@@ -85,13 +115,13 @@ const CreateUser: React.FC = () => {
 
     const goToNextPage = () => {
         if (currentPage < totalPages) {
-            cargarUsuariosDesdeBD(currentPage + 1);
+            setCurrentPage(currentPage + 1);
         }
     };
 
     const goToPrevPage = () => {
         if (currentPage > 1) {
-            cargarUsuariosDesdeBD(currentPage - 1);
+            setCurrentPage(currentPage - 1);
         }
     };
 
@@ -125,10 +155,11 @@ const CreateUser: React.FC = () => {
         {
             header: "Acciones",
             headerClassName: "text-center",
-
             className: "text-center flex justify-center",
             render: (u) => (
-                <Button onClick={() => handleEditUser(u)} className="text-[#b2e1d8] bg-[#B2E1D8] py-1 px-2 hover:text-white mx-1">Editar</Button>
+                <Button onClick={() => handleEditUser(u)} className="text-[#19322f] bg-[#B2E1D8] py-1 px-2 hover:bg-[#9adfd3] mx-1">
+                    Editar
+                </Button>
             )
         }
     ];
@@ -177,7 +208,7 @@ const CreateUser: React.FC = () => {
                             </div>
 
                             <Table
-                                data={usersList}
+                                data={paginatedUsers}
                                 columns={userColumns}
                                 keyExtractor={(u) => u.id || u.username}
                             />
@@ -185,7 +216,7 @@ const CreateUser: React.FC = () => {
                             {/* Controles de Paginación */}
                             <div className="p-3 border-t border-[#b2e1d8]/20 flex justify-between items-center">
                                 <span className="text-xs text-[#b2e1d8]/50">
-                                    Mostrando {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, totalUsers)} de {totalUsers}
+                                    Mostrando {totalUsers > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0} - {Math.min(currentPage * itemsPerPage, totalUsers)} de {totalUsers}
                                 </span>
 
                                 <div className="flex items-center gap-2">
@@ -199,12 +230,12 @@ const CreateUser: React.FC = () => {
                                     </button>
 
                                     <span className="text-sm text-[#b2e1d8]/70 px-3">
-                                        Página {currentPage} de {totalPages}
+                                        Página {currentPage} de {totalPages || 1}
                                     </span>
 
                                     <button
                                         onClick={goToNextPage}
-                                        disabled={currentPage === totalPages}
+                                        disabled={currentPage === totalPages || totalPages === 0}
                                         className="px-3 py-1.5 bg-[#b2e1d8]/10 hover:bg-[#b2e1d8]/20 text-[#b2e1d8] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
                                     >
                                         Siguiente
@@ -264,27 +295,29 @@ const CreateUser: React.FC = () => {
                                     <Input
                                         type="text"
                                         value={assignedRoutes.join(", ")}
-                                        onChange={(e) => setAssignedRoutes(e.target.value.split(", ").map(r => r.trim()))}
+                                        onChange={(e) => setAssignedRoutes(e.target.value.split(", ").map(r => r.trim()).filter(r => r))}
                                         className="w-full bg-[#19322f] border border-[#b2e1d8]/30 rounded-lg p-2.5 text-[#b2e1d8] focus:ring-1 focus:ring-[#b2e1d8] focus:border-[#b2e1d8] outline-none transition-all"
                                         placeholder="Ej: R1, R2 (separadas por coma)"
                                     />
                                     <p className="text-xs text-[#b2e1d8]/50 mt-1">Separa las rutas con comas</p>
                                 </div>
-                                <div className="flex justify-center">
+
+                                <div className="flex justify-center gap-2">
                                     <Button
                                         onClick={handleSaveToDatabase}
                                         color="claroaqua"
-                                        className="mr-2 w-32 h-10 px-4 py-2"
+                                        className="w-32 h-10 px-4 py-2"
                                     >
                                         Guardar
                                     </Button>
 
                                     <Button
-                                        className="mr-2 w-32 h-10 px-4 py-2"
+                                        className="w-32 h-10 px-4 py-2"
                                         onClick={() => {
                                             setUsername('');
                                             setPassword('');
                                             setAssignedRoutes([]);
+                                            setRole('VENDEDOR');
                                         }}
                                         color="claroaqua"
                                     >
